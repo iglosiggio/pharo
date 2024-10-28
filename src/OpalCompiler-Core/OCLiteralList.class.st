@@ -8,7 +8,8 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'literalsDict',
-		'first'
+		'first',
+		'messageSends'
 	],
 	#category : 'OpalCompiler-Core-Extras',
 	#package : 'OpalCompiler-Core',
@@ -17,13 +18,30 @@ Class {
 
 { #category : 'adding' }
 OCLiteralList >> addLiteral: anObject [
+	| index |
+	index := self arraySize + 1.
 
 	"I keep the first element, so it can be easily returned"
-	literalsDict ifEmpty: [ first := anObject ].
+	index = 1 ifTrue: [ first := anObject ].
 
-	"The index of the last inserted element is the the size of the literalsDict,
-	as the elements are always added and never removed"
-	^ literalsDict at: anObject ifAbsentPut: [ literalsDict size + 1 ]
+	^ literalsDict at: anObject ifAbsentPut: index
+]
+
+{ #category : 'adding' }
+OCLiteralList >> addMessageSelector: selector [
+	| index |
+	index := self arraySize + 1.
+
+	"I keep the first element, so it can be easily returned"
+	index = 1 ifTrue: [ first := selector ].
+
+	messageSends add: selector -> index.
+	^ index
+]
+
+{ #category : 'private' }
+OCLiteralList >> arraySize [
+	^ messageSends size * 2 + literalsDict size
 ]
 
 { #category : 'converting' }
@@ -31,9 +49,12 @@ OCLiteralList >> asArray [
 
 	| result |
 
-	result := Array new: literalsDict size.
+	result := Array new: self arraySize.
 
 	literalsDict associationsDo: [ :anAssoc | result at: anAssoc value put: anAssoc key ].
+	messageSends withIndexDo: [ :anAssoc :sendSiteIdx |
+		result at: anAssoc value put: anAssoc key.
+		result at: anAssoc value + 1 put: sendSiteIdx ].
 
 	^ result
 ]
@@ -48,7 +69,8 @@ OCLiteralList >> first [
 OCLiteralList >> initialize [
 
 	super initialize.
-	literalsDict := OCLiteralDictionary new
+	literalsDict := OCLiteralDictionary new.
+	messageSends := OrderedCollection new.
 ]
 
 { #category : 'testing' }
@@ -61,4 +83,9 @@ OCLiteralList >> isEmpty [
 OCLiteralList >> literalIndexOf: anElement ifAbsent: exceptionBlock [
 
 	^ literalsDict at: anElement ifAbsent: exceptionBlock
+]
+
+{ #category : 'accessing' }
+OCLiteralList >> messageSends [
+	^ messageSends
 ]
