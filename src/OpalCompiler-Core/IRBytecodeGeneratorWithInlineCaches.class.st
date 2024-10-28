@@ -6,6 +6,16 @@ Class {
 	#tag : 'Bytecode'
 }
 
+{ #category : 'results' }
+IRBytecodeGeneratorWithInlineCaches >> compiledMethod [
+	| result |
+
+	result := super compiledMethod.
+	(result literalAt: 1) compiledCode: result.
+
+	^ result
+]
+
 { #category : 'initialization' }
 IRBytecodeGeneratorWithInlineCaches >> initialize [
 	super initialize.
