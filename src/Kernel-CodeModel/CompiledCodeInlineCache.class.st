@@ -1,10 +1,17 @@
+"
+This class is responsible for storing all the inline caches of a given method. It has a `CompiledMethod` layout. The slots are used for storing language-visible information and the bytes are used for internal pointers (this means: don't modify them!).
+
+The first slot for this class is a CompiledCode-compatible header. After that a series of inline caches follow. Each cache is a list of options followed by the fallback. Each option is two slots (one for the class and one for the method). The fallback is one slot (the information necessary for invoking it).
+
+On the private data side we have a series of pointers. The accessors implemented will show those pointers as `ExternalAddress` instances. The same rough structure follows: one pointer to machine code for each option (pointing to a primitive / an interpreter / a piece of jit-ed machine code) and a pointer to the fallback handler after that.
+"
 Class {
 	#name : 'CompiledCodeInlineCache',
 	#superclass : 'Object',
 	#type : 'compiledMethod',
-	#category : 'Kernel-Tests-Classes',
-	#package : 'Kernel-Tests',
-	#tag : 'Classes'
+	#category : 'Kernel-CodeModel-Methods',
+	#package : 'Kernel-CodeModel',
+	#tag : 'Methods'
 }
 
 { #category : 'instance creation' }
@@ -146,21 +153,21 @@ CompiledCodeInlineCache >> compiledCode: aCompiledCode [
 	self objectAt: self class slotForCompiledCode put: aCompiledCode
 ]
 
-{ #category : 'accessing' }
+{ #category : 'fallback' }
 CompiledCodeInlineCache >> fallbackDataAtSendSite: aSendSiteIdx [
 	| slot |
 	slot := self class slotForFallbackDataAtSendSite: aSendSiteIdx.
 	^ self objectAt: slot
 ]
 
-{ #category : 'accessing' }
+{ #category : 'fallback' }
 CompiledCodeInlineCache >> fallbackDataAtSendSite: aSendSiteIdx put: aFallbackDataObject [
 	| slot |
 	slot := self class slotForFallbackDataAtSendSite: aSendSiteIdx.
 	self objectAt: slot put: aFallbackDataObject
 ]
 
-{ #category : 'accessing' }
+{ #category : 'fallback' }
 CompiledCodeInlineCache >> fallbackNativeAtSendSite: aSendSiteIdx [
 	| pointerIdx |
 	self assertValidSendsite: aSendSiteIdx.
@@ -168,7 +175,7 @@ CompiledCodeInlineCache >> fallbackNativeAtSendSite: aSendSiteIdx [
 	^ self pointerAt: pointerIdx
 ]
 
-{ #category : 'accessing' }
+{ #category : 'fallback' }
 CompiledCodeInlineCache >> fallbackNativeAtSendSite: aSendSiteIdx put: anExternalAddress [
 	| pointerIdx |
 	self assertValidSendsite: aSendSiteIdx.
@@ -276,14 +283,14 @@ CompiledCodeInlineCache >> nativeAtSendSite: aSendSiteIdx forOption: anOptionIdx
 	self pointerAt: pointerIdx put: anExternalAddress
 ]
 
-{ #category : 'accessing' }
+{ #category : 'private' }
 CompiledCodeInlineCache >> nativeSectionStart [
 	| wordSize |
 	wordSize := Smalltalk wordSize.
 	^ wordSize "header" + (self slotSize * wordSize) "vm data" + 1.
 ]
 
-{ #category : 'accessing' }
+{ #category : 'private' }
 CompiledCodeInlineCache >> objectAt: index [
 	"Primitive. Answer the method header (if index=1) or a literal (if index
 	>1) from the receiver. Essential. See Object documentation
@@ -293,7 +300,7 @@ CompiledCodeInlineCache >> objectAt: index [
 	self primitiveFailed
 ]
 
-{ #category : 'accessing' }
+{ #category : 'private' }
 CompiledCodeInlineCache >> objectAt: index put: value [
 	"Primitive. Store the value argument into a literal in the receiver. An
 	index of 2 corresponds to the first literal. Fails if the index is less than 2
@@ -306,7 +313,7 @@ CompiledCodeInlineCache >> objectAt: index put: value [
 	self primitiveFailed
 ]
 
-{ #category : 'accessing' }
+{ #category : 'private' }
 CompiledCodeInlineCache >> pointerAt: aPointerIdx [
 	| wordSize byteStart result |
 	wordSize := Smalltalk wordSize.
@@ -317,7 +324,7 @@ CompiledCodeInlineCache >> pointerAt: aPointerIdx [
 	^ result 
 ]
 
-{ #category : 'accessing' }
+{ #category : 'private' }
 CompiledCodeInlineCache >> pointerAt: aPointerIdx put: anExternalAddress [ 
 	| wordSize byteStart |
 	wordSize := Smalltalk wordSize.
@@ -326,7 +333,7 @@ CompiledCodeInlineCache >> pointerAt: aPointerIdx put: anExternalAddress [
 		self at: byteStart - 1 + i put: (anExternalAddress at: i) ]
 ]
 
-{ #category : 'accessing' }
+{ #category : 'private' }
 CompiledCodeInlineCache >> slotSize [
 	^ self header bitAnd: 16rFFFF.
 ]
