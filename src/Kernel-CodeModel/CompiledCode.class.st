@@ -342,6 +342,12 @@ CompiledCode >> frameSize [
 		ifFalse: [LargeFrame]
 ]
 
+{ #category : 'accessing' }
+CompiledCode >> hasInlineCaches [
+
+	^(self header bitAt: 30) = 1
+]
+
 { #category : 'literals' }
 CompiledCode >> hasLiteral: literal [
 	"Answer whether the receiver references the argument, literal."

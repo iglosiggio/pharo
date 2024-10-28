@@ -45,6 +45,22 @@ CompiledCodeInlineCache class >> for: aCompiledCode [
 	^ cache
 ]
 
+{ #category : 'instance creation' }
+CompiledCodeInlineCache class >> forSendsites: aSendsiteList [
+	| wordSize cache bytesSize slotsSize |
+	wordSize := Smalltalk wordSize.
+	
+	self assert: wordSize = 8 description: '32 bit VMs are not yet supported'.
+
+	bytesSize := (self inlinedAttempts + 1) * aSendsiteList size * Smalltalk wordSize.
+	slotsSize := 1 + 1 + (self sendSiteCacheSize * aSendsiteList size).
+	cache := self basicNew: bytesSize header: slotsSize.
+	cache compiledCode: nil.
+	aSendsiteList withIndexDo: [ :sendSiteAssoc :i |
+		cache fallbackDataAtSendSite: i put: sendSiteAssoc key ].
+	^ cache
+]
+
 { #category : 'accessing' }
 CompiledCodeInlineCache class >> inlinedAttempts [
 	^ 3
