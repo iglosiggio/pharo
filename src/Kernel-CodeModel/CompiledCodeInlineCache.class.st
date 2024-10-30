@@ -117,7 +117,6 @@ CompiledCodeInlineCache class >> slotForCompiledCode [
 
 { #category : 'private' }
 CompiledCodeInlineCache class >> slotForFallbackDataAtSendSite: aSendSiteIndex [
-	"see slotOffsetAtSendSite:"
 	^ (self slotAtSendSite: aSendSiteIndex + 1) - 1 "One slot before the next SendSite"
 ]
 
