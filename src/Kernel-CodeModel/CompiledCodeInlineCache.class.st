@@ -7,57 +7,28 @@ On the private data side we have a series of pointers. The accessors implemented
 "
 Class {
 	#name : 'CompiledCodeInlineCache',
-	#superclass : 'Object',
-	#type : 'compiledMethod',
+	#superclass : 'Array',
+	#type : 'variable',
 	#category : 'Kernel-CodeModel-Methods',
 	#package : 'Kernel-CodeModel',
 	#tag : 'Methods'
 }
 
 { #category : 'instance creation' }
-CompiledCodeInlineCache class >> basicNew: numberOfBytes header: headerWord [
-	"Primitive. Answer an instance of me. The number of literals (and other
-	 information) is specified by the headerWord (see my class comment).
-	 The first argument specifies the number of fields for bytecodes in the
-	 method. Fail if either argument is not a SmallInteger, or if numberOfBytes
-	 is negative, or if memory is low. Once the header of a method is set by
-	 this primitive, it cannot be changed to change the number of literals.
-	 Essential. See Object documentation whatIsAPrimitive."
-
-	<primitive: 79 error: ec>
-	^self primitiveFailed
-]
-
-{ #category : 'instance creation' }
 CompiledCodeInlineCache class >> for: aCompiledCode [
-	| messages wordSize cache bytesSize slotsSize |
-	messages := aCompiledCode localMessages.
-	wordSize := Smalltalk wordSize.
-	
-	self assert: wordSize = 8 description: '32 bit VMs are not yet supported'.
-
-	bytesSize := (self inlinedAttempts + 1) * messages size * Smalltalk wordSize.
-	slotsSize := 1 + 1 + (self sendSiteCacheSize * messages size).
-	cache := self basicNew: bytesSize header: slotsSize.
-	cache compiledCode: aCompiledCode.
-	messages withIndexDo: [ :selector :i |
-		cache fallbackDataAtSendSite: i put: selector ].
-	^ cache
+	^ (self forSendsites: aCompiledCode localMessages)
+		compiledCode: aCompiledCode;
+		yourself.
 ]
 
 { #category : 'instance creation' }
 CompiledCodeInlineCache class >> forSendsites: aSendsiteList [
-	| wordSize cache bytesSize slotsSize |
-	wordSize := Smalltalk wordSize.
-	
-	self assert: wordSize = 8 description: '32 bit VMs are not yet supported'.
+	| cache slotsSize |
 
-	bytesSize := (self inlinedAttempts + 1) * aSendsiteList size * Smalltalk wordSize.
-	slotsSize := 1 + 1 + (self sendSiteCacheSize * aSendsiteList size).
-	cache := self basicNew: bytesSize header: slotsSize.
-	cache compiledCode: nil.
+	slotsSize := 1 + (self sendSiteCacheSize * aSendsiteList size).
+	cache := self new: slotsSize.
 	aSendsiteList withIndexDo: [ :sendSiteAssoc :i |
-		cache fallbackDataAtSendSite: i put: sendSiteAssoc key ].
+		cache fallbackDataAtSendSite: i put: sendSiteAssoc ].
 	^ cache
 ]
 
@@ -66,38 +37,19 @@ CompiledCodeInlineCache class >> inlinedAttempts [
 	^ 3
 ]
 
-{ #category : 'accessing' }
-CompiledCodeInlineCache class >> nativePointersPerSendSite [
-	^ self inlinedAttempts + 1 "fallback"
-]
-
-{ #category : 'private' }
-CompiledCodeInlineCache class >> pointerIdxForFallbackAt: aSendSiteIdx [
-	^ 1 + "initial slot"
-		(self nativePointersPerSendSite * (aSendSiteIdx - 1)) + "skip previous ICs"
-		self inlinedAttempts "skip previous pointers on this IC"
-]
-
-{ #category : 'accessing' }
-CompiledCodeInlineCache class >> pointerIdxForNativeAt: aSendSiteIdx forOption: anOptionIdx [
-	^ 1 + "initial slot"
-		(self nativePointersPerSendSite * (aSendSiteIdx - 1)) + "skip previous send sites"
-		(anOptionIdx - 1) "skip previous options"
-]
-
 { #category : 'private' }
 CompiledCodeInlineCache class >> sendSiteCacheSize [
 	^ self inlinedAttempts * ( " for each attempt..."
 			1 + "cached class"
 			1 "cached method"
 		) +
-		1 "cached fallback"
+		1 + "cached fallback data"
+		1 "cached fallback method"
 ]
 
 { #category : 'private' }
 CompiledCodeInlineCache class >> slotAtSendSite: aSendSiteIndex [ 
 	^ 1 + "initial slot"
-		1 + "skip header"
 		1 + "skip compiled code"
 		((aSendSiteIndex - 1) * self sendSiteCacheSize) "skip each previous send site"
 ]
@@ -112,11 +64,16 @@ CompiledCodeInlineCache class >> slotForClassAtSendSite: aSendSiteIndex forOptio
 
 { #category : 'private' }
 CompiledCodeInlineCache class >> slotForCompiledCode [
-	^ 2 "ignored header"
+	^ 1
 ]
 
 { #category : 'private' }
 CompiledCodeInlineCache class >> slotForFallbackDataAtSendSite: aSendSiteIndex [
+	^ (self slotAtSendSite: aSendSiteIndex + 1) - 2 "Two slots before the next SendSite"
+]
+
+{ #category : 'private' }
+CompiledCodeInlineCache class >> slotForFallbackMethodAtSendSite: aSendSiteIndex [
 	^ (self slotAtSendSite: aSendSiteIndex + 1) - 1 "One slot before the next SendSite"
 ]
 
@@ -139,7 +96,7 @@ CompiledCodeInlineCache >> assertValidSendsite: aSendSiteIdx andOption: anOption
 
 { #category : 'accessing' }
 CompiledCodeInlineCache >> cacheSize [
-	^ self slotSize // self class sendSiteCacheSize
+	^ self size // self class sendSiteCacheSize
 ]
 
 { #category : 'accessing' }
@@ -147,7 +104,7 @@ CompiledCodeInlineCache >> classAtSendsite: aSendSiteIdx forOption: anOptionIdx 
 	| slot |
 	self assertValidSendsite: aSendSiteIdx andOption: anOptionIdx.
 	slot := self class slotForClassAtSendSite: aSendSiteIdx forOption: anOptionIdx.
-	^ self objectAt: slot
+	^ self at: slot
 ]
 
 { #category : 'accessing' }
@@ -155,52 +112,45 @@ CompiledCodeInlineCache >> classAtSendsite: aSendSiteIdx forOption: anOptionIdx 
 	| slot |
 	self assertValidSendsite: aSendSiteIdx andOption: anOptionIdx.
 	slot := self class slotForClassAtSendSite: aSendSiteIdx forOption: anOptionIdx.
-	self objectAt: slot put: aClass
+	^ self at: slot put: aClass
 ]
 
 { #category : 'accessing' }
 CompiledCodeInlineCache >> compiledCode [
-	^ self objectAt: self class slotForCompiledCode.
+	^ self at: self class slotForCompiledCode.
 ]
 
 { #category : 'accessing' }
 CompiledCodeInlineCache >> compiledCode: aCompiledCode [
-	self objectAt: self class slotForCompiledCode put: aCompiledCode
+	^ self at: self class slotForCompiledCode put: aCompiledCode
 ]
 
 { #category : 'fallback' }
 CompiledCodeInlineCache >> fallbackDataAtSendSite: aSendSiteIdx [
 	| slot |
 	slot := self class slotForFallbackDataAtSendSite: aSendSiteIdx.
-	^ self objectAt: slot
+	^ self at: slot
 ]
 
 { #category : 'fallback' }
 CompiledCodeInlineCache >> fallbackDataAtSendSite: aSendSiteIdx put: aFallbackDataObject [
 	| slot |
 	slot := self class slotForFallbackDataAtSendSite: aSendSiteIdx.
-	self objectAt: slot put: aFallbackDataObject
+	^ self at: slot put: aFallbackDataObject
 ]
 
 { #category : 'fallback' }
-CompiledCodeInlineCache >> fallbackNativeAtSendSite: aSendSiteIdx [
-	| pointerIdx |
-	self assertValidSendsite: aSendSiteIdx.
-	pointerIdx := self class pointerIdxForFallbackAt: aSendSiteIdx.
-	^ self pointerAt: pointerIdx
+CompiledCodeInlineCache >> fallbackMethodAtSendSite: aSendSiteIdx [
+	| slot |
+	slot := self class slotForFallbackMethodAtSendSite: aSendSiteIdx.
+	^ self at: slot
 ]
 
 { #category : 'fallback' }
-CompiledCodeInlineCache >> fallbackNativeAtSendSite: aSendSiteIdx put: anExternalAddress [
-	| pointerIdx |
-	self assertValidSendsite: aSendSiteIdx.
-	pointerIdx := self class pointerIdxForFallbackAt: aSendSiteIdx.
-	self pointerAt: pointerIdx put: anExternalAddress
-]
-
-{ #category : 'accessing' }
-CompiledCodeInlineCache >> header [
-	^ self objectAt: 1.
+CompiledCodeInlineCache >> fallbackMethodAtSendSite: aSendSiteIdx put: aFallbackDataObject [
+	| slot |
+	slot := self class slotForFallbackMethodAtSendSite: aSendSiteIdx.
+	^ self at: slot put: aFallbackDataObject
 ]
 
 { #category : 'accessing' }
@@ -213,20 +163,14 @@ CompiledCodeInlineCache >> inspectorNodes [
 	nodes add:
 		(StInspectorDynamicNode
 			hostObject: self
-			label: 'header'
-			value: self header).
-
-	nodes add:
-		(StInspectorDynamicNode
-			hostObject: self
 			label: 'compiledCode'
 			value: self compiledCode).
 
 	1 to: self cacheSize do: [ :sendSiteIdx |
-		| fallbackData fallbackNative |
+		| fallbackData fallbackMethod |
 
 		1 to: self class inlinedAttempts do: [ :optionIdx |
-			| class method native |
+			| class method |
 
 			class := self classAtSendsite: sendSiteIdx forOption: optionIdx.
 			nodes add:
@@ -240,14 +184,7 @@ CompiledCodeInlineCache >> inspectorNodes [
 				(StInspectorDynamicNode
 					hostObject: self
 					label: 'PIC ', sendSiteIdx asString, ' - Option ', optionIdx asString, ' - Method'
-					value: method).
-
-			native := self nativeAtSendSite: sendSiteIdx forOption: optionIdx.
-			nodes add:
-				(StInspectorDynamicNode
-					hostObject: self
-					label: 'PIC ', sendSiteIdx asString, ' - Option ', optionIdx asString, ' - Native'
-					value: native) ].
+					value: method) ].
 
 		fallbackData := self fallbackDataAtSendSite: sendSiteIdx.
 		nodes add:
@@ -256,12 +193,12 @@ CompiledCodeInlineCache >> inspectorNodes [
 				label: 'PIC ', sendSiteIdx asString, ' - Fallback Data'
 				value: fallbackData).
 
-		fallbackNative := self fallbackNativeAtSendSite: sendSiteIdx.
+		fallbackMethod := self fallbackMethodAtSendSite: sendSiteIdx.
 		nodes add:
 			(StInspectorDynamicNode
 				hostObject: self
-				label: 'PIC ', sendSiteIdx asString, ' - Fallback Native'
-				value: fallbackNative) ].
+				label: 'PIC ', sendSiteIdx asString, ' - Fallback Method'
+				value: fallbackMethod) ].
 
 	^ nodes
 ]
@@ -271,7 +208,7 @@ CompiledCodeInlineCache >> methodAtSendSite: aSendSiteIdx forOption: anOptionIdx
 	| slot |
 	self assertValidSendsite: aSendSiteIdx andOption: anOptionIdx.
 	slot := self class slotForMethodAtSendSite: aSendSiteIdx forOption: anOptionIdx.
-	^ self objectAt: slot
+	^ self at: slot
 ]
 
 { #category : 'accessing' }
@@ -279,76 +216,34 @@ CompiledCodeInlineCache >> methodAtSendSite: aSendSiteIdx forOption: anOptionIdx
 	| slot |
 	self assertValidSendsite: aSendSiteIdx andOption: anOptionIdx.
 	slot := self class slotForMethodAtSendSite: aSendSiteIdx forOption: anOptionIdx.
-	self objectAt: slot put: aCompiledCode
-]
-
-{ #category : 'accessing' }
-CompiledCodeInlineCache >> nativeAtSendSite: aSendSiteIdx forOption: anOptionIdx [ 
-	| pointerIdx |
-	self assertValidSendsite: aSendSiteIdx andOption: anOptionIdx.
-	pointerIdx := self class pointerIdxForNativeAt: aSendSiteIdx forOption: anOptionIdx.
-	^ self pointerAt: pointerIdx
-]
-
-{ #category : 'accessing' }
-CompiledCodeInlineCache >> nativeAtSendSite: aSendSiteIdx forOption: anOptionIdx put: anExternalAddress [
-	| pointerIdx |
-	self assertValidSendsite: aSendSiteIdx andOption: anOptionIdx.
-	pointerIdx := self class pointerIdxForNativeAt: aSendSiteIdx forOption: anOptionIdx.
-	self pointerAt: pointerIdx put: anExternalAddress
+	^ self at: slot put: aCompiledCode
 ]
 
 { #category : 'private' }
-CompiledCodeInlineCache >> nativeSectionStart [
-	| wordSize |
-	wordSize := Smalltalk wordSize.
-	^ wordSize "header" + (self slotSize * wordSize) "vm data" + 1.
+CompiledCodeInlineCache >> nextFreeOptionAtSendSite: sendSiteIndex [ 
+	1 to: self class inlinedAttempts do: [ :optionIndex |
+		(self classAtSendsite: sendSiteIndex forOption: optionIndex)
+			ifNil: [ ^ optionIndex ] ].
+	^ nil
 ]
 
-{ #category : 'private' }
-CompiledCodeInlineCache >> objectAt: index [
-	"Primitive. Answer the method header (if index=1) or a literal (if index
-	>1) from the receiver. Essential. See Object documentation
-	whatIsAPrimitive."
+{ #category : 'nil' }
+CompiledCodeInlineCache >> runFallbackFor: sendSiteIndex withArgLen: numArgs withFallbackData: selector [
+	| senderContext args receiver receiverClass method |
+	"FIXME: Put a primitive here for a fastpath <primitive: 999>"
+	senderContext := thisContext sender.
+	args := Array new: numArgs.
+	(1 to: numArgs) reverseDo: [ :i |
+		args at: i put: senderContext pop ].
+	receiver := senderContext pop.
+	receiverClass := receiver class.
 
-	<primitive: 68 error: ec>
-	self primitiveFailed
-]
+	method := receiverClass lookupSelector: selector.
+	self assert: method notNil.
 
-{ #category : 'private' }
-CompiledCodeInlineCache >> objectAt: index put: value [
-	"Primitive. Store the value argument into a literal in the receiver. An
-	index of 2 corresponds to the first literal. Fails if the index is less than 2
-	or greater than the number of literals. Answer the value as the result.
-	Normally only the compiler sends this message, because only the
-	compiler stores values in CompiledMethods. Essential. See Object
-	documentation whatIsAPrimitive."
+	(self nextFreeOptionAtSendSite: sendSiteIndex) ifNotNil: [ :optionIndex |
+		self classAtSendsite: sendSiteIndex forOption: optionIndex put: receiverClass basicIdentityHash.
+		self methodAtSendSite: sendSiteIndex forOption: optionIndex put: method ].
 
-	<primitive: 69 error: ec>
-	self primitiveFailed
-]
-
-{ #category : 'private' }
-CompiledCodeInlineCache >> pointerAt: aPointerIdx [
-	| wordSize byteStart result |
-	wordSize := Smalltalk wordSize.
-	byteStart := self nativeSectionStart + ((aPointerIdx - 1) * wordSize).
-	result := ExternalAddress new.
-	1 to: wordSize do: [ :i |
-		result at: i put: (self at: byteStart - 1 + i) ].
-	^ result 
-]
-
-{ #category : 'private' }
-CompiledCodeInlineCache >> pointerAt: aPointerIdx put: anExternalAddress [ 
-	| wordSize byteStart |
-	wordSize := Smalltalk wordSize.
-	byteStart := self nativeSectionStart + ((aPointerIdx - 1) * wordSize).
-	1 to: wordSize do: [ :i |
-		self at: byteStart - 1 + i put: (anExternalAddress at: i) ]
-]
-
-{ #category : 'private' }
-CompiledCodeInlineCache >> slotSize [
-	^ self header bitAnd: 16rFFFF.
+	^ receiver withArgs: args executeMethod: method
 ]

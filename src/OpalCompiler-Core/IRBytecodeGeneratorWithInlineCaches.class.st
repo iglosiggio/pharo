@@ -36,7 +36,7 @@ IRBytecodeGeneratorWithInlineCaches >> irPrimitive: anIrPrimitive [
 IRBytecodeGeneratorWithInlineCaches >> literals [
 	| inlineCaches |
 
-	inlineCaches := CompiledCodeInlineCache forSendsites: literals messageSends.
+	inlineCaches := CompiledCodeInlineCache forSendsites: (literals messageSends collect: #key).
 
 	^ super literals
 		at: 1 put: inlineCaches;
